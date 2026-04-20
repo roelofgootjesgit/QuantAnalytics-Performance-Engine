@@ -57,6 +57,24 @@ pip install -e .
 python -m quantmetrics_analytics.cli.run_analysis --jsonl "C:\pad\naar\quantbuild.jsonl" --reports all
 ```
 
+**Leesbaar rapportbestand:** standaard schrijft de CLI een UTF-8 **`.txt`** naar **`output_rapport/`** onder je quantanalytics-clone (map wordt zo nodig aangemaakt; bestandsnaam = invoerbestandsnaam + UTC-timestamp). Op stderr zie je `Report written to: ...`. Gebruik **`--stdout`** als je alleen terminal-output wilt (geen bestand).
+
+```powershell
+cd C:\Users\Gebruiker\quantanalyticsv1
+python -m quantmetrics_analytics.cli.run_analysis `
+  --jsonl "C:\pad\naar\quantbuild.jsonl" `
+  --reports all
+```
+
+Eigen pad (overschrijft de standaardmap):
+
+```powershell
+python -m quantmetrics_analytics.cli.run_analysis `
+  --jsonl "C:\pad\naar\quantbuild.jsonl" `
+  --reports all `
+  --output "D:\data\my_analysis.txt"
+```
+
 Meerdere dagen / bestanden:
 
 ```powershell
@@ -139,6 +157,8 @@ cd C:\Users\Gebruiker\quantanalyticsv1
 pip install -e .
 python -m quantmetrics_analytics.cli.run_analysis --jsonl "C:\Users\Gebruiker\quantbuildv1\data\quantlog_events\runs\<run_id>.jsonl" --reports all
 ```
+
+Het rapport staat daarna onder **`quantanalyticsv1\output_rapport\`** (zie stderr voor het exacte pad). Alleen naar de console: voeg **`--stdout`** toe.
 
 Het exacte pad naar het run-`.jsonl` staat in je backtest-log of volgt uit `run_id` in config.
 

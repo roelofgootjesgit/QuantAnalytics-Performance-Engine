@@ -37,4 +37,44 @@ def test_no_trade_and_funnel() -> None:
 def test_cli_exit_code(tmp_path: Path) -> None:
     from quantmetrics_analytics.cli.run_analysis import run
 
+    assert run(argv=["--jsonl", str(_FIXTURE), "--reports", "summary", "--stdout"]) == 0
+
+
+def test_cli_default_writes_under_output_rapport(tmp_path: Path, monkeypatch) -> None:
+    """Default (no --stdout/--output) writes to repo output_rapport/."""
+    import quantmetrics_analytics.cli.run_analysis as ra
+    from quantmetrics_analytics.cli.run_analysis import run
+
+    monkeypatch.setattr(ra, "_repo_root", lambda: tmp_path)
+
+    dest_dir = tmp_path / "output_rapport"
     assert run(argv=["--jsonl", str(_FIXTURE), "--reports", "summary"]) == 0
+    files = list(dest_dir.glob("*.txt"))
+    assert len(files) == 1
+    assert "Total events: 5" in files[0].read_text(encoding="utf-8")
+
+
+def test_cli_writes_output_file(tmp_path: Path) -> None:
+    from io import StringIO
+
+    from quantmetrics_analytics.cli.run_analysis import run
+
+    out_file = tmp_path / "nested" / "report.txt"
+    captured = StringIO()
+    assert (
+        run(
+            stdout=captured,
+            argv=[
+                "--jsonl",
+                str(_FIXTURE),
+                "--reports",
+                "summary",
+                "--output",
+                str(out_file),
+            ],
+        )
+        == 0
+    )
+    assert out_file.is_file()
+    assert "Total events: 5" in out_file.read_text(encoding="utf-8")
+    assert captured.getvalue() == ""

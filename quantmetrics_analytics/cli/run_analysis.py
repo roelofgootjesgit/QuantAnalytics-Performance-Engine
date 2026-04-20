@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from quantmetrics_analytics.analysis.event_summary import format_event_summary
@@ -45,9 +46,37 @@ def _collect_paths(args: argparse.Namespace) -> list[Path]:
     return []
 
 
+def _repo_root() -> Path:
+    """Repository root (folder that contains `quantmetrics_analytics/`)."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _safe_filename_part(raw: str, *, max_len: int = 72) -> str:
+    out = "".join(c if c.isalnum() or c in "-_" else "_" for c in raw)
+    out = out.strip("_")[:max_len].strip("_")
+    return out or "report"
+
+
+def _default_report_path(args: argparse.Namespace, paths: list[Path]) -> Path:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
+    out_dir = _repo_root() / "output_rapport"
+    if getattr(args, "jsonl", None):
+        stem = _safe_filename_part(paths[0].stem) if paths else "report"
+        name = f"{stem}_{ts}.txt"
+    elif getattr(args, "glob_pattern", None):
+        name = f"glob_{len(paths)}_files_{ts}.txt"
+    else:
+        stem = _safe_filename_part(Path(args.dir).resolve().name)
+        name = f"{stem}_{ts}.txt"
+    return out_dir / name
+
+
 def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="QuantMetrics Analytics: QuantLog JSONL to stdout reports (read-only).",
+        description=(
+            "QuantMetrics Analytics: QuantLog JSONL reports (read-only). "
+            "By default writes UTF-8 text under output_rapport/ in this repo."
+        ),
     )
     parser.add_argument(
         "--jsonl",
@@ -76,6 +105,22 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
             "Choices: summary, no-trade, funnel, performance, regime."
         ),
     )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Write the report to this explicit path (UTF-8). "
+            "Overrides the default output_rapport/ file. "
+            "Confirmation is printed on stderr."
+        ),
+    )
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help="Print the report to stdout instead of creating a file under output_rapport/.",
+    )
     args = parser.parse_args(argv)
 
     inputs = sum(
@@ -88,6 +133,9 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
         reports = _parse_reports(args.reports)
     except ValueError as exc:
         parser.error(str(exc))
+
+    if getattr(args, "stdout", False) and getattr(args, "output", None) is not None:
+        parser.error("Choose either --stdout or --output/-o, not both.")
 
     paths = _collect_paths(args)
     if not paths:
@@ -110,7 +158,22 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
         elif name == "regime":
             blocks.append(format_regime_performance(df))
 
-    print("\n".join(blocks), file=stdout, end="")
+    text = "\n".join(blocks)
+
+    if getattr(args, "stdout", False):
+        print(text, file=stdout, end="")
+        return 0
+
+    dest: Path | None
+    explicit = getattr(args, "output", None)
+    if explicit is not None:
+        dest = explicit.expanduser().resolve()
+    else:
+        dest = _default_report_path(args, paths).resolve()
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text, encoding="utf-8")
+    print(f"Report written to: {dest}", file=sys.stderr)
     return 0
 
 
