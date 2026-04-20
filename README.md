@@ -128,6 +128,7 @@ quantanalyticsv1/
 ├── quantmetrics_analytics/
 │   ├── ingestion/       JSONL loading (read-only)
 │   ├── processing/    normalization → pandas
+│   ├── transforms/    silver-layer helpers (e.g. `reconstruct_trades`)
 │   ├── analysis/      report modules per slice
 │   └── cli/           run_analysis CLI
 ├── docs/              Architecture, sprint plan, VPS / backtest how-to
