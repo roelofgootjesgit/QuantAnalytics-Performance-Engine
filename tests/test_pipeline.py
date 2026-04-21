@@ -7,6 +7,7 @@ from pathlib import Path
 from quantmetrics_analytics.analysis.event_summary import format_event_summary
 from quantmetrics_analytics.analysis.no_trade_analysis import format_no_trade_analysis
 from quantmetrics_analytics.analysis.signal_funnel import format_signal_funnel
+from quantmetrics_analytics.datasets.decisions import trade_actions_to_decisions_df
 from quantmetrics_analytics.ingestion.jsonl import load_events_from_paths
 from quantmetrics_analytics.processing.normalize import events_to_dataframe
 
@@ -52,6 +53,36 @@ def test_cli_default_writes_under_output_rapport(tmp_path: Path, monkeypatch) ->
     files = list(dest_dir.glob("*.txt"))
     assert len(files) == 1
     assert "Total events: 5" in files[0].read_text(encoding="utf-8")
+
+
+def test_trade_actions_to_decisions_df() -> None:
+    events = load_events_from_paths([_FIXTURE])
+    dec = trade_actions_to_decisions_df(events)
+    assert len(dec) == 2
+    assert set(dec["decision"].tolist()) == {"NO_ACTION", "ENTER"}
+
+
+def test_cli_export_decisions_tsv(tmp_path: Path) -> None:
+    from quantmetrics_analytics.cli.run_analysis import run
+
+    out_tsv = tmp_path / "decisions.tsv"
+    assert (
+        run(
+            argv=[
+                "--jsonl",
+                str(_FIXTURE),
+                "--reports",
+                "summary",
+                "--stdout",
+                "--export-decisions-tsv",
+                str(out_tsv),
+            ],
+        )
+        == 0
+    )
+    text = out_tsv.read_text(encoding="utf-8")
+    assert "decision" in text.splitlines()[0]
+    assert "NO_ACTION" in text
 
 
 def test_cli_writes_output_file(tmp_path: Path) -> None:

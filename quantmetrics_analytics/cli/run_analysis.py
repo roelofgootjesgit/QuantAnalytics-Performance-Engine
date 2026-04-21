@@ -12,6 +12,7 @@ from quantmetrics_analytics.analysis.no_trade_analysis import format_no_trade_an
 from quantmetrics_analytics.analysis.performance_summary import format_performance_summary
 from quantmetrics_analytics.analysis.regime_performance import format_regime_performance
 from quantmetrics_analytics.analysis.signal_funnel import format_signal_funnel
+from quantmetrics_analytics.datasets.decisions import trade_actions_to_decisions_df
 from quantmetrics_analytics.ingestion.jsonl import load_events_from_paths
 from quantmetrics_analytics.processing.normalize import events_to_dataframe
 
@@ -121,6 +122,12 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print the report to stdout instead of creating a file under output_rapport/.",
     )
+    parser.add_argument(
+        "--export-decisions-tsv",
+        type=Path,
+        metavar="PATH",
+        help="Also write QuantBuild trade_action rows as TSV (decisions grain MVP).",
+    )
     args = parser.parse_args(argv)
 
     inputs = sum(
@@ -144,6 +151,14 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
 
     events = load_events_from_paths(paths)
     df = events_to_dataframe(events)
+
+    export_path = getattr(args, "export_decisions_tsv", None)
+    if export_path is not None:
+        dec = trade_actions_to_decisions_df(events)
+        export_dest = export_path.expanduser().resolve()
+        export_dest.parent.mkdir(parents=True, exist_ok=True)
+        dec.to_csv(export_dest, sep="\t", index=False, encoding="utf-8")
+        print(f"Decisions TSV written to: {export_dest}", file=sys.stderr)
 
     blocks: list[str] = []
     for name in reports:
