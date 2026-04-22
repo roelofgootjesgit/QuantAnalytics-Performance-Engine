@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 
 _FUNNEL_EVENT_TYPES: tuple[str, ...] = (
@@ -41,6 +43,36 @@ def _trade_intent_count(df: pd.DataFrame) -> int:
         return 0
     d = sub["payload_decision"].astype(str).str.strip().str.upper()
     return int(d.isin({"ENTER", "REVERSE"}).sum())
+
+
+def signal_funnel_metrics_dict(df: pd.DataFrame) -> dict[str, Any]:
+    """JSON-serializable funnel counts + stage-to-stage retention (%)."""
+    detected = _count_type(df, "signal_detected")
+    evaluated = _count_type(df, "signal_evaluated")
+    risk_allowed = _risk_allow_count(df)
+    trades = _trade_intent_count(df)
+
+    stages: list[tuple[str, int]] = [
+        ("signal_detected", detected),
+        ("signal_evaluated", evaluated),
+        ("risk_guard_decision_allow", risk_allowed),
+        ("trade_action_enter_reverse", trades),
+    ]
+    out: dict[str, Any] = {
+        "signal_detected": detected,
+        "signal_evaluated": evaluated,
+        "risk_guard_decision_allow": risk_allowed,
+        "trade_action_enter_reverse": trades,
+    }
+    for i in range(len(stages) - 1):
+        a, b = stages[i][1], stages[i + 1][1]
+        label = f"pct_retained:{stages[i][0]}_to_{stages[i + 1][0]}"
+        retained = 100.0 * float(b) / float(a) if a else 0.0
+        out[label] = round(retained, 2)
+    missing = [et for et in _FUNNEL_EVENT_TYPES if _count_type(df, et) == 0]
+    if missing:
+        out["zero_count_event_types"] = ", ".join(missing)
+    return out
 
 
 def format_signal_funnel(df: pd.DataFrame) -> str:

@@ -463,6 +463,14 @@ JSON:
 
 ---
 
+### 9.3 CLI — `research` rapport (MVP)
+
+De CLI (`python -m quantmetrics_analytics.cli.run_analysis`) ondersteunt **`--reports research`**: een tekstrapport met datakwaliteit, decision-cycle funnel, lifecycle open/gesloten, context-completeness op `signal_evaluated`, guard-diagnostiek, expectancy-slices en exit-efficiency. Zelfde blokken zitten in **`build_run_summary`** / **`--run-summary-json`** en de Markdown-spiegel **`--run-summary-md`**.
+
+Implementatie: package-module **`quantmetrics_analytics.analysis.extended_diagnostics`**. Specificatie-context: **`quantmetrics_os`** `docs/ANALYTICS_OUTPUT_GAPS.md`.
+
+---
+
 ## 10. Closed feedback loop
 
 Dit is waar alles samenkomt.

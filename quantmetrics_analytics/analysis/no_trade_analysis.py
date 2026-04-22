@@ -9,6 +9,35 @@ def _col(df: pd.DataFrame, name: str) -> pd.Series | None:
     return df[name] if name in df.columns else None
 
 
+def no_action_distribution_dict(df: pd.DataFrame) -> dict[str, dict[str, float | int]]:
+    """Structured NO_ACTION counts and percentages (keys = reason strings)."""
+    et = _col(df, "event_type")
+    if df.empty or et is None:
+        return {}
+    trade = df[et == "trade_action"]
+    if trade.empty:
+        return {}
+    dec = _col(trade, "payload_decision")
+    if dec is None:
+        return {}
+    dec_u = dec.astype(str).str.strip().str.upper()
+    no_action = trade[dec_u == "NO_ACTION"]
+    if no_action.empty:
+        return {}
+    reason = _col(no_action, "payload_reason")
+    if reason is None:
+        return {}
+    n = int(len(no_action))
+    counts = reason.fillna("<missing>").astype(str).str.strip()
+    counts = counts.replace("", "<empty>")
+    vc = counts.value_counts()
+    out: dict[str, dict[str, float | int]] = {}
+    for r, c in vc.items():
+        pct = 100.0 * float(c) / float(n) if n else 0.0
+        out[str(r)] = {"count": int(c), "pct_of_no_action": round(pct, 2)}
+    return out
+
+
 def format_no_trade_analysis(df: pd.DataFrame) -> str:
     if df.empty:
         return "NO TRADE ANALYSIS\n(no events)\n"
