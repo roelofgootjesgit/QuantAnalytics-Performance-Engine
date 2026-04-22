@@ -6,12 +6,22 @@ from typing import Any
 
 import pandas as pd
 
+from quantmetrics_analytics.analysis.extended_diagnostics import _quantbuild_subset
+
 _FUNNEL_EVENT_TYPES: tuple[str, ...] = (
     "signal_detected",
     "signal_evaluated",
     "risk_guard_decision",
     "trade_action",
 )
+
+
+def _funnel_scope_df(df: pd.DataFrame) -> pd.DataFrame:
+    """QuantBuild-only when ``source_system`` is present (SPRINT 3); else full frame."""
+    if df.empty or "source_system" not in df.columns:
+        return df
+    qb = _quantbuild_subset(df)
+    return qb if not qb.empty else df
 
 
 def _count_type(df: pd.DataFrame, event_type: str) -> int:
@@ -47,10 +57,11 @@ def _trade_intent_count(df: pd.DataFrame) -> int:
 
 def signal_funnel_metrics_dict(df: pd.DataFrame) -> dict[str, Any]:
     """JSON-serializable funnel counts + stage-to-stage retention (%)."""
-    detected = _count_type(df, "signal_detected")
-    evaluated = _count_type(df, "signal_evaluated")
-    risk_allowed = _risk_allow_count(df)
-    trades = _trade_intent_count(df)
+    wdf = _funnel_scope_df(df)
+    detected = _count_type(wdf, "signal_detected")
+    evaluated = _count_type(wdf, "signal_evaluated")
+    risk_allowed = _risk_allow_count(wdf)
+    trades = _trade_intent_count(wdf)
 
     stages: list[tuple[str, int]] = [
         ("signal_detected", detected),
@@ -69,18 +80,23 @@ def signal_funnel_metrics_dict(df: pd.DataFrame) -> dict[str, Any]:
         label = f"pct_retained:{stages[i][0]}_to_{stages[i + 1][0]}"
         retained = 100.0 * float(b) / float(a) if a else 0.0
         out[label] = round(retained, 2)
-    missing = [et for et in _FUNNEL_EVENT_TYPES if _count_type(df, et) == 0]
+    missing = [et for et in _FUNNEL_EVENT_TYPES if _count_type(wdf, et) == 0]
     if missing:
         out["zero_count_event_types"] = ", ".join(missing)
     return out
 
 
 def format_signal_funnel(df: pd.DataFrame) -> str:
-    lines = ["SIGNAL FUNNEL", "(event counts - same trace may emit multiple events)", ""]
-    detected = _count_type(df, "signal_detected")
-    evaluated = _count_type(df, "signal_evaluated")
-    risk_allowed = _risk_allow_count(df)
-    trades = _trade_intent_count(df)
+    lines = [
+        "SIGNAL FUNNEL",
+        "(QuantBuild rows only when source_system is present; same trace may emit multiple events)",
+        "",
+    ]
+    wdf = _funnel_scope_df(df)
+    detected = _count_type(wdf, "signal_detected")
+    evaluated = _count_type(wdf, "signal_evaluated")
+    risk_allowed = _risk_allow_count(wdf)
+    trades = _trade_intent_count(wdf)
 
     stages: list[tuple[str, int]] = [
         ("signal_detected", detected),
@@ -101,7 +117,7 @@ def format_signal_funnel(df: pd.DataFrame) -> str:
             f"{retained:.1f}% retained ({drop:.1f}% drop)"
         )
 
-    missing = [et for et in _FUNNEL_EVENT_TYPES if _count_type(df, et) == 0]
+    missing = [et for et in _FUNNEL_EVENT_TYPES if _count_type(wdf, et) == 0]
     if missing:
         lines.append("")
         lines.append(f"  Note: zero-count types: {', '.join(missing)}")

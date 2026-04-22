@@ -262,6 +262,16 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
         help="Do not write *_KEY_FINDINGS.md next to the main report (default: write operator Markdown).",
     )
     parser.add_argument(
+        "--run-id",
+        dest="run_id",
+        metavar="RUN_ID",
+        help=(
+            "Keep only events whose envelope ``run_id`` equals this string. "
+            "Use after backtests when ``data/quantlog_events`` mixes many runs — "
+            "otherwise context/funnel percentages reflect legacy rows, not the latest emitters."
+        ),
+    )
+    parser.add_argument(
         "--export-decisions-tsv",
         type=Path,
         metavar="PATH",
@@ -334,6 +344,25 @@ def run(stdout=sys.stdout, argv: list[str] | None = None) -> int:
         return 2
 
     events = load_events_from_paths(paths)
+    run_id_filter = getattr(args, "run_id", None)
+    if run_id_filter is not None:
+        run_id_filter = str(run_id_filter).strip()
+    if not run_id_filter:
+        run_id_filter = os.environ.get("QUANTMETRICS_ANALYTICS_RUN_ID", "").strip() or None
+    if run_id_filter:
+        n0 = len(events)
+        events = [e for e in events if str(e.get("run_id", "")).strip() == run_id_filter]
+        print(
+            f"run_id filter {run_id_filter!r}: kept {len(events)}/{n0} events",
+            file=sys.stderr,
+        )
+        if n0 > 0 and len(events) == 0:
+            print(
+                "error: no events matched --run-id / QUANTMETRICS_ANALYTICS_RUN_ID "
+                "(typo or no matching JSONL under the selected inputs)",
+                file=sys.stderr,
+            )
+            return 3
     df = events_to_dataframe(events)
 
     export_path = getattr(args, "export_decisions_tsv", None)

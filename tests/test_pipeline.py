@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -43,6 +44,56 @@ def test_cli_exit_code(tmp_path: Path) -> None:
     from quantmetrics_analytics.cli.run_analysis import run
 
     assert run(argv=["--jsonl", str(_FIXTURE), "--reports", "summary", "--stdout", "--no-key-findings-md"]) == 0
+
+
+def test_cli_run_id_filter_keeps_matching_events(tmp_path: Path) -> None:
+    from io import StringIO
+
+    from quantmetrics_analytics.cli.run_analysis import run
+
+    mixed = tmp_path / "mixed.jsonl"
+    lines = [ln for ln in _FIXTURE.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    ev = json.loads(lines[0])
+    ev["run_id"] = "run-exclusive"
+    mixed.write_text(lines[0] + "\n" + json.dumps(ev, ensure_ascii=True) + "\n", encoding="utf-8")
+    buf = StringIO()
+    assert (
+        run(
+            stdout=buf,
+            argv=[
+                "--jsonl",
+                str(mixed),
+                "--reports",
+                "summary",
+                "--stdout",
+                "--run-id",
+                "run-exclusive",
+                "--no-key-findings-md",
+            ],
+        )
+        == 0
+    )
+    assert "Total events: 1" in buf.getvalue()
+
+
+def test_cli_run_id_filter_no_match_returns_3() -> None:
+    from quantmetrics_analytics.cli.run_analysis import run
+
+    assert (
+        run(
+            argv=[
+                "--jsonl",
+                str(_FIXTURE),
+                "--reports",
+                "summary",
+                "--stdout",
+                "--run-id",
+                "nonexistent-run-id-xyz",
+                "--no-key-findings-md",
+            ],
+        )
+        == 3
+    )
 
 
 def test_cli_default_quantlog_input_sibling_quantbuild(tmp_path: Path, monkeypatch) -> None:
@@ -161,6 +212,58 @@ def test_signal_funnel_metrics_dict() -> None:
     m = signal_funnel_metrics_dict(df)
     assert m["signal_detected"] >= 1
     assert any(str(k).startswith("pct_retained") for k in m)
+
+
+def test_signal_funnel_uses_quantbuild_subset_when_mixed_sources() -> None:
+    """Global counts can show eval>detect; QuantBuild slice must drive funnel (SPRINT 3)."""
+    events = load_events_from_paths([_FIXTURE])
+    extra = {
+        "event_id": "00000000-0000-0000-0000-000000000099",
+        "event_type": "signal_evaluated",
+        "event_version": 1,
+        "timestamp_utc": "2026-04-19T10:00:00Z",
+        "ingested_at_utc": "2026-04-19T10:00:00Z",
+        "source_system": "quantbridge",
+        "source_component": "orchestrator",
+        "environment": "live",
+        "run_id": "run-a",
+        "session_id": "sess-1",
+        "source_seq": 99,
+        "trace_id": "t-bridge",
+        "severity": "info",
+        "payload": {"signal_type": "sqe_entry", "signal_direction": "LONG", "confidence": 0.5},
+    }
+    events.append(extra)  # type: ignore[arg-type]
+    df = events_to_dataframe(events)
+    m = signal_funnel_metrics_dict(df)
+    assert m["signal_evaluated"] == 1
+    assert m["signal_detected"] == 1
+
+
+def test_data_quality_eval_vs_detect_anomaly_quantbuild_only() -> None:
+    from quantmetrics_analytics.analysis.extended_diagnostics import build_data_quality_report
+
+    events = load_events_from_paths([_FIXTURE])
+    extra = {
+        "event_id": "00000000-0000-0000-0000-000000000099",
+        "event_type": "signal_evaluated",
+        "event_version": 1,
+        "timestamp_utc": "2026-04-19T10:00:00Z",
+        "ingested_at_utc": "2026-04-19T10:00:00Z",
+        "source_system": "quantbridge",
+        "source_component": "orchestrator",
+        "environment": "live",
+        "run_id": "run-a",
+        "session_id": "sess-1",
+        "source_seq": 99,
+        "trace_id": "t-bridge",
+        "severity": "info",
+        "payload": {"signal_type": "sqe_entry", "signal_direction": "LONG", "confidence": 0.5},
+    }
+    events.append(extra)  # type: ignore[arg-type]
+    df = events_to_dataframe(events)
+    r = build_data_quality_report(df)
+    assert not any("signal_evaluated_count_gt_signal_detected" in a for a in r.get("anomalies", []))
 
 
 def test_cli_export_decisions_tsv(tmp_path: Path) -> None:

@@ -35,7 +35,18 @@ def build_data_quality_report(df: pd.DataFrame) -> dict[str, Any]:
     tcl = int(counts.get("trade_closed", 0))
 
     anomalies: list[str] = []
-    if se > sd and sd > 0:
+    # Funnel detect vs eval: compare QuantBuild rows only (SPRINT 3). Mixed stores often
+    # attach non-QuantBuild signal_evaluated without QuantBuild signal_detected, which
+    # inflates global ``se`` vs ``sd`` without indicating a QuantBuild emitter bug.
+    qb_funnel = _quantbuild_subset(df)
+    if not qb_funnel.empty:
+        et_q = qb_funnel["event_type"].astype(str)
+        c_q = et_q.value_counts().to_dict()
+        sd_q = int(c_q.get("signal_detected", 0))
+        se_q = int(c_q.get("signal_evaluated", 0))
+        if se_q > sd_q and sd_q > 0:
+            anomalies.append("signal_evaluated_count_gt_signal_detected (review ordering or missing detects)")
+    elif se > sd and sd > 0:
         anomalies.append("signal_evaluated_count_gt_signal_detected (review ordering or missing detects)")
     if ofl > 0 and tcl > ofl:
         anomalies.append("trade_closed_gt_order_filled (unexpected; review lifecycle)")
@@ -190,6 +201,7 @@ def build_decision_cycle_funnel(df: pd.DataFrame) -> dict[str, Any]:
         "terminal_no_action": 0,
         "terminal_other_or_missing": 0,
     }
+    cycles_eval_without_detect = 0
 
     for cyc in cycles:
         g = qb[qb["_dc"] == cyc]
@@ -198,6 +210,8 @@ def build_decision_cycle_funnel(df: pd.DataFrame) -> dict[str, Any]:
             flags["has_signal_detected"] += 1
         if "signal_evaluated" in et:
             flags["has_signal_evaluated"] += 1
+        if "signal_evaluated" in et and "signal_detected" not in et:
+            cycles_eval_without_detect += 1
         if "risk_guard_decision" in et:
             flags["has_risk_guard_decision"] += 1
         td = _terminal_decision(g)
@@ -226,6 +240,7 @@ def build_decision_cycle_funnel(df: pd.DataFrame) -> dict[str, Any]:
     return {
         "unique_decision_cycles": n_cycles,
         "cycle_stage_presence": flags,
+        "cycles_signal_evaluated_without_signal_detected": cycles_eval_without_detect,
         "cycles_with_order_filled": has_fill,
         "cycles_with_trade_closed": has_close,
         "terminal_trade_action_mix": {str(k): int(v) for k, v in mix.items()},
